@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/card';
 import { useApp, Bus } from '@/contexts/AppContext';
 import { toast } from 'sonner';
 import { ArrowLeft } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 const Booking = () => {
   const navigate = useNavigate();
@@ -25,7 +26,7 @@ const Booking = () => {
     return null;
   }
 
-  const handleConfirmBooking = () => {
+  const handleConfirmBooking = async () => {
     if (selectedSeats.length === 0) {
       toast.error('Please select at least one seat');
       return;
@@ -35,8 +36,10 @@ const Booking = () => {
       return;
     }
 
+    const bookingId = Math.random().toString(36).substr(2, 9).toUpperCase();
+    
     const booking = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: bookingId,
       busId: bus.id,
       customerName: name,
       customerEmail: email,
@@ -48,10 +51,39 @@ const Booking = () => {
 
     addBooking(booking);
     
-    // Mock email sending
-    console.log('Sending email confirmation to:', email);
+    // Send email confirmation via edge function
+    toast.loading('Sending confirmation email...');
     
-    toast.success('Booking confirmed! Check your email for details.');
+    try {
+      const { data, error } = await supabase.functions.invoke('send-booking-email', {
+        body: {
+          customerEmail: email,
+          customerName: name,
+          bookingId: bookingId,
+          busNumber: bus.busNumber,
+          departure: bus.departure,
+          arrival: bus.arrival,
+          seatNumbers: selectedSeats,
+          totalAmount: selectedSeats.length * bus.price,
+          bookingDate: booking.bookingDate
+        }
+      });
+
+      if (error) {
+        console.error('Email sending error:', error);
+        toast.dismiss();
+        toast.success('Booking confirmed! (Email notification failed, but your booking is saved)');
+      } else {
+        console.log('Email sent successfully:', data);
+        toast.dismiss();
+        toast.success('Booking confirmed! Check your email for details.');
+      }
+    } catch (error) {
+      console.error('Email error:', error);
+      toast.dismiss();
+      toast.success('Booking confirmed! (Email notification unavailable, but your booking is saved)');
+    }
+    
     navigate('/bookings');
   };
 
