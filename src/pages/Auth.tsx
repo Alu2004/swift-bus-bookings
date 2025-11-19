@@ -1,61 +1,114 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Mail, Phone, Lock } from 'lucide-react';
+import { Lock, Mail, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Header } from '@/components/Header';
-import { useApp } from '@/contexts/AppContext';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 
 const Auth = () => {
   const navigate = useNavigate();
-  const { setUser } = useApp();
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [otp, setOtp] = useState('');
-  const [otpSent, setOtpSent] = useState(false);
-  const [authType, setAuthType] = useState<'email' | 'phone'>('email');
+  const [loading, setLoading] = useState(false);
+  
+  // Login state
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  
+  // Signup state
+  const [signupEmail, setSignupEmail] = useState('');
+  const [signupPassword, setSignupPassword] = useState('');
+  const [signupFullName, setSignupFullName] = useState('');
+  const [signupPhone, setSignupPhone] = useState('');
 
-  const handleSendOtp = () => {
-    if (authType === 'email' && !email) {
-      toast.error('Please enter your email');
+  useEffect(() => {
+    // Check if user is already logged in
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        navigate('/search');
+      }
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        navigate('/search');
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!loginEmail || !loginPassword) {
+      toast.error('Please fill in all fields');
       return;
     }
-    if (authType === 'phone' && !phone) {
-      toast.error('Please enter your phone number');
-      return;
-    }
 
-    // Mock OTP sending
-    setOtpSent(true);
-    toast.success(`OTP sent to your ${authType}! Use 123456 for demo.`);
+    setLoading(true);
+    
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: loginEmail,
+        password: loginPassword,
+      });
+
+      if (error) throw error;
+
+      if (data.session) {
+        toast.success('Login successful!');
+        navigate('/search');
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to login');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleVerifyOtp = () => {
-    if (!otp) {
-      toast.error('Please enter OTP');
+  const handleSignup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!signupEmail || !signupPassword || !signupFullName) {
+      toast.error('Please fill in all required fields');
       return;
     }
 
-    // Mock OTP verification (demo accepts 123456)
-    if (otp === '123456') {
-      const contact = authType === 'email' ? email : phone;
-      
-      // Check for admin (demo: admin@bus.com or +9779841234567)
-      const isAdmin = contact === 'admin@bus.com' || contact === '+9779841234567';
-      
-      setUser({
-        id: Math.random().toString(36).substr(2, 9),
-        contact,
-        isAdmin
+    if (signupPassword.length < 6) {
+      toast.error('Password must be at least 6 characters');
+      return;
+    }
+
+    setLoading(true);
+    
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: signupEmail,
+        password: signupPassword,
+        options: {
+          data: {
+            full_name: signupFullName,
+            phone: signupPhone,
+          },
+          emailRedirectTo: `${window.location.origin}/`,
+        },
       });
-      
-      toast.success('Login successful!');
-      navigate('/search');
-    } else {
-      toast.error('Invalid OTP. Use 123456 for demo.');
+
+      if (error) throw error;
+
+      if (data.user) {
+        toast.success('Account created successfully!');
+        // Auto-login after signup
+        navigate('/search');
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to create account');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -67,103 +120,132 @@ const Auth = () => {
         <div className="max-w-md mx-auto">
           <Card className="p-8 shadow-lg">
             <div className="text-center mb-8">
-              <h2 className="text-3xl font-bold text-foreground mb-2">Welcome Back</h2>
-              <p className="text-muted-foreground">Sign in to book your tickets</p>
+              <h2 className="text-3xl font-bold text-foreground mb-2">Welcome</h2>
+              <p className="text-muted-foreground">Sign in or create an account</p>
             </div>
 
-            <Tabs defaultValue="email" onValueChange={(v) => setAuthType(v as 'email' | 'phone')}>
+            <Tabs defaultValue="login">
               <TabsList className="grid w-full grid-cols-2 mb-6">
-                <TabsTrigger value="email">Email</TabsTrigger>
-                <TabsTrigger value="phone">Phone</TabsTrigger>
+                <TabsTrigger value="login">Login</TabsTrigger>
+                <TabsTrigger value="signup">Sign Up</TabsTrigger>
               </TabsList>
 
-              <TabsContent value="email" className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Email Address</label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
-                    <Input
-                      type="email"
-                      placeholder="your@email.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      disabled={otpSent}
-                      className="pl-10"
-                    />
+              <TabsContent value="login">
+                <form onSubmit={handleLogin} className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Email Address</label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
+                      <Input
+                        type="email"
+                        placeholder="your@email.com"
+                        value={loginEmail}
+                        onChange={(e) => setLoginEmail(e.target.value)}
+                        disabled={loading}
+                        className="pl-10"
+                        required
+                      />
+                    </div>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Demo admin: admin@bus.com
-                  </p>
-                </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Password</label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
+                      <Input
+                        type="password"
+                        placeholder="Enter your password"
+                        value={loginPassword}
+                        onChange={(e) => setLoginPassword(e.target.value)}
+                        disabled={loading}
+                        className="pl-10"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <Button 
+                    type="submit" 
+                    className="w-full" 
+                    disabled={loading}
+                  >
+                    {loading ? 'Signing in...' : 'Sign In'}
+                  </Button>
+                </form>
               </TabsContent>
 
-              <TabsContent value="phone" className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Phone Number</label>
-                  <div className="relative">
-                    <Phone className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
+              <TabsContent value="signup">
+                <form onSubmit={handleSignup} className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Full Name *</label>
+                    <div className="relative">
+                      <User className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
+                      <Input
+                        type="text"
+                        placeholder="John Doe"
+                        value={signupFullName}
+                        onChange={(e) => setSignupFullName(e.target.value)}
+                        disabled={loading}
+                        className="pl-10"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Email Address *</label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
+                      <Input
+                        type="email"
+                        placeholder="your@email.com"
+                        value={signupEmail}
+                        onChange={(e) => setSignupEmail(e.target.value)}
+                        disabled={loading}
+                        className="pl-10"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Phone Number</label>
                     <Input
                       type="tel"
                       placeholder="+977 98XXXXXXXX"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      disabled={otpSent}
-                      className="pl-10"
+                      value={signupPhone}
+                      onChange={(e) => setSignupPhone(e.target.value)}
+                      disabled={loading}
                     />
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Demo admin: +9779841234567
-                  </p>
-                </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Password *</label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
+                      <Input
+                        type="password"
+                        placeholder="At least 6 characters"
+                        value={signupPassword}
+                        onChange={(e) => setSignupPassword(e.target.value)}
+                        disabled={loading}
+                        className="pl-10"
+                        required
+                        minLength={6}
+                      />
+                    </div>
+                  </div>
+
+                  <Button 
+                    type="submit" 
+                    className="w-full" 
+                    disabled={loading}
+                  >
+                    {loading ? 'Creating account...' : 'Create Account'}
+                  </Button>
+                </form>
               </TabsContent>
             </Tabs>
-
-            {otpSent && (
-              <div className="space-y-2 mt-4">
-                <label className="text-sm font-medium text-foreground">Enter OTP</label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
-                  <Input
-                    type="text"
-                    placeholder="123456"
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value)}
-                    maxLength={6}
-                    className="pl-10"
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Use 123456 for demo
-                </p>
-              </div>
-            )}
-
-            <div className="mt-6 space-y-3">
-              {!otpSent ? (
-                <Button 
-                  onClick={handleSendOtp}
-                  className="w-full bg-gradient-to-r from-primary to-accent"
-                >
-                  Send OTP
-                </Button>
-              ) : (
-                <>
-                  <Button 
-                    onClick={handleVerifyOtp}
-                    className="w-full bg-gradient-to-r from-primary to-accent"
-                  >
-                    Verify & Sign In
-                  </Button>
-                  <Button 
-                    variant="outline"
-                    onClick={() => setOtpSent(false)}
-                    className="w-full"
-                  >
-                    Change {authType === 'email' ? 'Email' : 'Phone'}
-                  </Button>
-                </>
-              )}
-            </div>
           </Card>
         </div>
       </main>

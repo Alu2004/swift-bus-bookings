@@ -4,12 +4,12 @@ import { useApp } from '@/contexts/AppContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 export const Header = () => {
-  const { user, setUser } = useApp();
+  const { user, signOut } = useApp();
   const navigate = useNavigate();
   const location = useLocation();
 
-  const handleLogout = () => {
-    setUser(null);
+  const handleLogout = async () => {
+    await signOut();
     navigate('/');
   };
 
@@ -52,7 +52,7 @@ export const Header = () => {
               )}
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <User className="w-4 h-4" />
-                <span className="hidden sm:inline">{user.contact}</span>
+                <span className="hidden sm:inline">{user.email}</span>
               </div>
               <Button 
                 variant="ghost" 

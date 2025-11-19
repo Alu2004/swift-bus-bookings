@@ -1,4 +1,6 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { User as SupabaseUser } from '@supabase/supabase-js';
+import { supabase } from '@/integrations/supabase/client';
 
 export interface Bus {
   id: string;
@@ -25,18 +27,22 @@ export interface Booking {
 
 export interface User {
   id: string;
-  contact: string;
+  email: string;
+  full_name?: string;
+  phone?: string;
   isAdmin: boolean;
 }
 
 interface AppContextType {
   user: User | null;
-  setUser: (user: User | null) => void;
+  supabaseUser: SupabaseUser | null;
+  loading: boolean;
   buses: Bus[];
   setBuses: (buses: Bus[]) => void;
   bookings: Booking[];
   addBooking: (booking: Booking) => void;
   cancelBooking: (bookingId: string) => void;
+  signOut: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -57,8 +63,75 @@ const defaultBuses: Bus[] = [
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [supabaseUser, setSupabaseUser] = useState<SupabaseUser | null>(null);
+  const [loading, setLoading] = useState(true);
   const [buses, setBuses] = useState<Bus[]>(defaultBuses);
   const [bookings, setBookings] = useState<Booking[]>([]);
+
+  useEffect(() => {
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSupabaseUser(session?.user ?? null);
+      if (session?.user) {
+        fetchUserRole(session.user.id);
+      } else {
+        setLoading(false);
+      }
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      setSupabaseUser(session?.user ?? null);
+      
+      if (session?.user) {
+        setTimeout(() => {
+          fetchUserRole(session.user.id);
+        }, 0);
+      } else {
+        setUser(null);
+        setLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const fetchUserRole = async (userId: string) => {
+    try {
+      // Fetch user profile
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name, phone')
+        .eq('id', userId)
+        .single();
+
+      // Check if user has admin role
+      const { data: roles } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId);
+
+      const isAdmin = roles?.some(r => r.role === 'admin') ?? false;
+
+      setUser({
+        id: userId,
+        email: supabaseUser?.email ?? '',
+        full_name: profile?.full_name,
+        phone: profile?.phone,
+        isAdmin,
+      });
+    } catch (error) {
+      console.error('Error fetching user role:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    setSupabaseUser(null);
+  };
 
   const addBooking = (booking: Booking) => {
     setBookings(prev => [...prev, booking]);
@@ -86,7 +159,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   return (
-    <AppContext.Provider value={{ user, setUser, buses, setBuses, bookings, addBooking, cancelBooking }}>
+    <AppContext.Provider value={{ 
+      user, 
+      supabaseUser,
+      loading,
+      buses, 
+      setBuses, 
+      bookings, 
+      addBooking, 
+      cancelBooking,
+      signOut 
+    }}>
       {children}
     </AppContext.Provider>
   );
