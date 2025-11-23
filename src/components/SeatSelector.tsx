@@ -4,14 +4,12 @@ import { cn } from '@/lib/utils';
 
 interface SeatSelectorProps {
   totalSeats: number;
-  availableSeats: number;
+  bookedSeats: number[];
   onSeatSelect: (seats: number[]) => void;
   selectedSeats: number[];
 }
 
-export const SeatSelector = ({ totalSeats, availableSeats, onSeatSelect, selectedSeats }: SeatSelectorProps) => {
-  const bookedSeatsCount = totalSeats - availableSeats;
-  const bookedSeats = Array.from({ length: bookedSeatsCount }, (_, i) => i + 1);
+export const SeatSelector = ({ totalSeats, bookedSeats, onSeatSelect, selectedSeats }: SeatSelectorProps) => {
 
   const toggleSeat = (seatNumber: number) => {
     if (bookedSeats.includes(seatNumber)) return;

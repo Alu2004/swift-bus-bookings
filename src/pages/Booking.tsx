@@ -1,29 +1,107 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { SeatSelector } from '@/components/SeatSelector';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { useApp, Bus } from '@/contexts/AppContext';
+import { useApp } from '@/contexts/AppContext';
 import { toast } from 'sonner';
 import { ArrowLeft } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
+interface BusData {
+  id: string;
+  bus_number: string;
+  from_location_id: string;
+  to_location_id: string;
+  departure_time: string;
+  arrival_time: string;
+  total_seats: number;
+  available_seats: number;
+  price: number;
+  from_location?: { name: string };
+  to_location?: { name: string };
+}
+
 const Booking = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, addBooking } = useApp();
-  const bus = location.state?.bus as Bus;
+  const { user } = useApp();
+  const busId = location.state?.busId as string;
 
+  const [bus, setBus] = useState<BusData | null>(null);
+  const [bookedSeats, setBookedSeats] = useState<number[]>([]);
   const [selectedSeats, setSelectedSeats] = useState<number[]>([]);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [loading, setLoading] = useState(true);
 
-  if (!bus) {
-    navigate('/search');
-    return null;
+  useEffect(() => {
+    if (!user) {
+      toast.error('Please login to book tickets');
+      navigate('/auth');
+      return;
+    }
+
+    if (!busId) {
+      navigate('/search');
+      return;
+    }
+
+    fetchBusDetails();
+  }, [busId, user, navigate]);
+
+  const fetchBusDetails = async () => {
+    try {
+      // Fetch bus with location names
+      const { data: busData, error: busError } = await supabase
+        .from('buses')
+        .select(`
+          *,
+          from_location:locations!buses_from_location_id_fkey(name),
+          to_location:locations!buses_to_location_id_fkey(name)
+        `)
+        .eq('id', busId)
+        .single();
+
+      if (busError) throw busError;
+
+      setBus(busData);
+
+      // Fetch all confirmed bookings for this bus to get booked seats
+      const { data: bookings, error: bookingsError } = await supabase
+        .from('bookings')
+        .select('seat_numbers')
+        .eq('bus_id', busId)
+        .eq('status', 'confirmed');
+
+      if (bookingsError) throw bookingsError;
+
+      // Flatten all booked seat numbers
+      const allBookedSeats = bookings.flatMap(b => b.seat_numbers);
+      setBookedSeats(allBookedSeats);
+
+      setLoading(false);
+    } catch (error) {
+      console.error('Error fetching bus details:', error);
+      toast.error('Failed to load bus details');
+      navigate('/search');
+    }
+  };
+
+  if (loading || !bus) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <main className="container mx-auto px-4 py-8">
+          <div className="text-center">
+            <p className="text-muted-foreground">Loading...</p>
+          </div>
+        </main>
+      </div>
+    );
   }
 
   const handleConfirmBooking = async () => {
@@ -36,55 +114,76 @@ const Booking = () => {
       return;
     }
 
-    const bookingId = Math.random().toString(36).substr(2, 9).toUpperCase();
-    
-    const booking = {
-      id: bookingId,
-      busId: bus.id,
-      customerName: name,
-      customerEmail: email,
-      customerPhone: phone,
-      seatNumbers: selectedSeats,
-      bookingDate: new Date().toISOString(),
-      status: 'confirmed' as const
-    };
-
-    addBooking(booking);
-    
-    // Send email confirmation via edge function
-    toast.loading('Sending confirmation email...');
-    
-    try {
-      const { data, error } = await supabase.functions.invoke('send-booking-email', {
-        body: {
-          customerEmail: email,
-          customerName: name,
-          bookingId: bookingId,
-          busNumber: bus.busNumber,
-          departure: bus.departure,
-          arrival: bus.arrival,
-          seatNumbers: selectedSeats,
-          totalAmount: selectedSeats.length * bus.price,
-          bookingDate: booking.bookingDate
-        }
-      });
-
-      if (error) {
-        console.error('Email sending error:', error);
-        toast.dismiss();
-        toast.success('Booking confirmed! (Email notification failed, but your booking is saved)');
-      } else {
-        console.log('Email sent successfully:', data);
-        toast.dismiss();
-        toast.success('Booking confirmed! Check your email for details.');
-      }
-    } catch (error) {
-      console.error('Email error:', error);
-      toast.dismiss();
-      toast.success('Booking confirmed! (Email notification unavailable, but your booking is saved)');
+    if (!user) {
+      toast.error('Please login to continue');
+      navigate('/auth');
+      return;
     }
-    
-    navigate('/bookings');
+
+    try {
+      toast.loading('Processing booking...');
+
+      // Insert booking into database
+      const { data: newBooking, error: bookingError } = await supabase
+        .from('bookings')
+        .insert({
+          user_id: user.id,
+          bus_id: bus.id,
+          seat_numbers: selectedSeats,
+          total_amount: selectedSeats.length * bus.price,
+          passenger_name: name,
+          passenger_email: email,
+          passenger_phone: phone,
+          status: 'confirmed',
+          payment_status: 'pending'
+        })
+        .select()
+        .single();
+
+      if (bookingError) throw bookingError;
+
+      // Update available seats on the bus
+      const { error: updateError } = await supabase
+        .from('buses')
+        .update({ 
+          available_seats: bus.available_seats - selectedSeats.length 
+        })
+        .eq('id', bus.id);
+
+      if (updateError) throw updateError;
+
+      toast.dismiss();
+      
+      // Send email confirmation via edge function
+      try {
+        const fromLocation = bus.from_location?.name || 'Unknown';
+        const toLocation = bus.to_location?.name || 'Unknown';
+        
+        await supabase.functions.invoke('send-booking-email', {
+          body: {
+            customerEmail: email,
+            customerName: name,
+            bookingId: newBooking.id,
+            busNumber: bus.bus_number,
+            departure: bus.departure_time,
+            arrival: bus.arrival_time,
+            route: `${fromLocation} → ${toLocation}`,
+            seatNumbers: selectedSeats,
+            totalAmount: selectedSeats.length * bus.price,
+            bookingDate: newBooking.booking_date
+          }
+        });
+      } catch (emailError) {
+        console.error('Email error:', emailError);
+      }
+
+      toast.success('Booking confirmed successfully!');
+      navigate('/bookings');
+    } catch (error) {
+      console.error('Booking error:', error);
+      toast.dismiss();
+      toast.error('Failed to complete booking. Please try again.');
+    }
   };
 
   const totalPrice = selectedSeats.length * bus.price;
@@ -109,19 +208,29 @@ const Booking = () => {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               <div>
                 <p className="text-muted-foreground">Bus Number</p>
-                <p className="font-semibold text-foreground">{bus.busNumber}</p>
+                <p className="font-semibold text-foreground">{bus.bus_number}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Route</p>
+                <p className="font-semibold text-foreground">
+                  {bus.from_location?.name} → {bus.to_location?.name}
+                </p>
               </div>
               <div>
                 <p className="text-muted-foreground">Departure</p>
-                <p className="font-semibold text-foreground">{bus.departure}</p>
+                <p className="font-semibold text-foreground">{bus.departure_time}</p>
               </div>
               <div>
                 <p className="text-muted-foreground">Arrival</p>
-                <p className="font-semibold text-foreground">{bus.arrival}</p>
+                <p className="font-semibold text-foreground">{bus.arrival_time}</p>
               </div>
               <div>
                 <p className="text-muted-foreground">Price/Seat</p>
                 <p className="font-semibold text-primary">NPR {bus.price}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Available Seats</p>
+                <p className="font-semibold text-foreground">{bus.available_seats}/{bus.total_seats}</p>
               </div>
             </div>
           </Card>
@@ -129,8 +238,8 @@ const Booking = () => {
           <Card className="p-6">
             <h2 className="text-2xl font-bold text-foreground mb-6">Select Seats</h2>
             <SeatSelector
-              totalSeats={bus.totalSeats}
-              availableSeats={bus.availableSeats}
+              totalSeats={bus.total_seats}
+              bookedSeats={bookedSeats}
               onSeatSelect={setSelectedSeats}
               selectedSeats={selectedSeats}
             />

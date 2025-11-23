@@ -27,7 +27,7 @@ const SearchBuses = () => {
   });
 
   const handleBook = (bus: Bus) => {
-    navigate('/booking', { state: { bus } });
+    navigate('/booking', { state: { busId: bus.id } });
   };
 
   return (
