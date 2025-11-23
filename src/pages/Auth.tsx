@@ -27,14 +27,30 @@ const Auth = () => {
     // Check if user is already logged in
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        navigate('/search');
+        // Check for pending booking
+        const pendingBooking = localStorage.getItem('pendingBooking');
+        if (pendingBooking) {
+          const booking = JSON.parse(pendingBooking);
+          localStorage.removeItem('pendingBooking');
+          navigate('/booking', { state: { busId: booking.busId } });
+        } else {
+          navigate('/search');
+        }
       }
     });
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session) {
-        navigate('/search');
+        // Check for pending booking
+        const pendingBooking = localStorage.getItem('pendingBooking');
+        if (pendingBooking) {
+          const booking = JSON.parse(pendingBooking);
+          localStorage.removeItem('pendingBooking');
+          navigate('/booking', { state: { busId: booking.busId } });
+        } else {
+          navigate('/search');
+        }
       }
     });
 

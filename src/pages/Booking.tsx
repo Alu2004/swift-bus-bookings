@@ -39,19 +39,27 @@ const Booking = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) {
-      toast.error('Please login to book tickets');
-      navigate('/auth');
-      return;
-    }
-
     if (!busId) {
       navigate('/search');
       return;
     }
 
     fetchBusDetails();
-  }, [busId, user, navigate]);
+    
+    // Restore booking state if available
+    const pendingBooking = localStorage.getItem('pendingBooking');
+    if (pendingBooking && user) {
+      const booking = JSON.parse(pendingBooking);
+      if (booking.busId === busId) {
+        setSelectedSeats(booking.selectedSeats);
+        setName(booking.name);
+        setEmail(booking.email);
+        setPhone(booking.phone);
+        localStorage.removeItem('pendingBooking');
+        toast.success('Welcome back! Your seat selection has been restored.');
+      }
+    }
+  }, [busId, navigate, user]);
 
   const fetchBusDetails = async () => {
     try {
@@ -114,9 +122,18 @@ const Booking = () => {
       return;
     }
 
+    // Check if user is logged in, if not redirect to auth with booking state
     if (!user) {
-      toast.error('Please login to continue');
-      navigate('/auth');
+      // Save booking state to localStorage for after login
+      localStorage.setItem('pendingBooking', JSON.stringify({
+        busId: bus.id,
+        selectedSeats,
+        name,
+        email,
+        phone
+      }));
+      toast.error('Please login to confirm your booking');
+      navigate('/auth', { state: { returnTo: '/booking', busId: bus.id } });
       return;
     }
 
