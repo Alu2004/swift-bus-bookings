@@ -10,6 +10,7 @@ import SearchBuses from "./pages/SearchBuses";
 import Booking from "./pages/Booking";
 import MyBookings from "./pages/MyBookings";
 import Admin from "./pages/Admin";
+import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -28,6 +29,7 @@ const App = () => (
             <Route path="/booking" element={<Booking />} />
             <Route path="/bookings" element={<MyBookings />} />
             <Route path="/admin" element={<Admin />} />
+            <Route path="/profile" element={<Profile />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
