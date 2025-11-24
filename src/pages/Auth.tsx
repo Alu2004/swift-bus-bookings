@@ -89,13 +89,18 @@ const Auth = () => {
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!signupEmail || !signupPassword || !signupFullName) {
+    if (!signupEmail || !signupPassword || !signupFullName || !signupPhone) {
       toast.error('Please fill in all required fields');
       return;
     }
 
     if (signupPassword.length < 6) {
       toast.error('Password must be at least 6 characters');
+      return;
+    }
+
+    if (signupPhone.length < 10) {
+      toast.error('Please enter a valid phone number');
       return;
     }
 
@@ -225,13 +230,15 @@ const Auth = () => {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">Phone Number</label>
+                    <label className="text-sm font-medium text-foreground">Phone Number *</label>
                     <Input
                       type="tel"
                       placeholder="+977 98XXXXXXXX"
                       value={signupPhone}
                       onChange={(e) => setSignupPhone(e.target.value)}
                       disabled={loading}
+                      required
+                      minLength={10}
                     />
                   </div>
 

@@ -152,7 +152,7 @@ const Booking = () => {
           passenger_email: email,
           passenger_phone: phone,
           status: 'confirmed',
-          payment_status: 'pending'
+          payment_status: 'cash_on_delivery'
         })
         .select()
         .single();
