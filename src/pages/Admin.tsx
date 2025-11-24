@@ -38,6 +38,7 @@ interface Booking {
   seat_numbers: number[];
   total_amount: number;
   status: string;
+  payment_status: string;
   booking_date: string;
   bus_id: string;
 }
@@ -559,11 +560,11 @@ const Admin = () => {
                       return (
                         <Card key={booking.id} className="p-4">
                           <div className="flex justify-between items-start">
-                            <div className="space-y-2">
+                            <div className="space-y-2 flex-1">
                               <div>
                                 <p className="font-semibold">{booking.passenger_name}</p>
                                 <p className="text-sm text-muted-foreground">{booking.passenger_email}</p>
-                                <p className="text-sm text-muted-foreground">{booking.passenger_phone}</p>
+                                <p className="text-sm text-muted-foreground">📱 {booking.passenger_phone}</p>
                               </div>
                               {bus && (
                                 <div className="text-sm">
@@ -577,11 +578,24 @@ const Admin = () => {
                               <div>
                                 <p className="text-sm">Seats: {booking.seat_numbers.join(', ')}</p>
                                 <p className="text-sm font-medium">Total: NPR {booking.total_amount}</p>
+                                <p className="text-sm text-muted-foreground">
+                                  Payment: {booking.payment_status === 'cash_on_delivery' ? 'Cash on Delivery' : booking.payment_status}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  Booked: {new Date(booking.booking_date).toLocaleString()}
+                                </p>
                               </div>
                             </div>
-                            <Badge variant={booking.status === 'confirmed' ? 'default' : 'secondary'}>
-                              {booking.status}
-                            </Badge>
+                            <div className="flex flex-col gap-2 items-end">
+                              <Badge variant={booking.status === 'confirmed' ? 'default' : 'secondary'}>
+                                {booking.status}
+                              </Badge>
+                              {booking.payment_status === 'cash_on_delivery' && (
+                                <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-300">
+                                  COD
+                                </Badge>
+                              )}
+                            </div>
                           </div>
                         </Card>
                       );
