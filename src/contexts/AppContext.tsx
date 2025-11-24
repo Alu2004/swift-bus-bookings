@@ -11,6 +11,10 @@ export interface Bus {
   totalSeats: number;
   availableSeats: number;
   busNumber: string;
+  fromLocation?: string;
+  toLocation?: string;
+  fromLocationId?: string;
+  toLocationId?: string;
   isUncertain?: boolean;
 }
 
